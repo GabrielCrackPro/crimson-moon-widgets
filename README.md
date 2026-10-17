@@ -137,6 +137,8 @@ so each backdrop is judged behind a plate rather than on its own.
 | `tools/check.mjs` | Validates every preset, wallpaper, manifest and the preview |
 | `tools/serve.mjs` | Static server for the preview page |
 | `.github/workflows/build.yml` | `npm ci` → build → check → rebuild on every push |
+| `.github/workflows/release.yml` | `v*` tag, or manual dispatch: bundles and publishes the release |
+| `tools/release.mjs` | Zips the presets and wallpapers for a release, with checksums |
 
 `npm run check` fails on an unknown module type, a toggle without a value, a
 formula without its toggle, unbalanced `$…$`, an unknown Kustom function, a
@@ -152,6 +154,19 @@ The wallpaper pass reads each PNG's IHDR directly — width, height, byte count,
 SHA-256 against the manifest — so it needs no image library even though the
 renderer does. It also fails a backdrop that uses text, a filter, or a colour
 outside the palette.
+
+## Cut a release
+
+```bash
+git tag -a v1.0.0 -m "Crimson Moon Widgets 1.0.0"
+git push origin v1.0.0
+```
+
+The tag **is** the version: the release workflow fails if `package.json` disagrees
+with it. It builds, checks, and publishes two archives —
+`crimson-moon-widgets-<version>.zip` (the presets) and
+`crimson-moon-wallpapers-<version>.zip` (the renders) — each with a `.sha256`
+beside it. Re-running against an existing tag replaces the assets.
 
 ## Roadmap
 

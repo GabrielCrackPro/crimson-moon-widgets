@@ -9,3 +9,6 @@ preview/
 
 node_modules/
 .DS_Store
+
+# Release archives: built by npm run release for the tag being published.
+release/

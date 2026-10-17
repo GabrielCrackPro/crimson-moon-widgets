@@ -1,0 +1,110 @@
+name: Release pack
+
+# Publishes the built pack when a v* tag is pushed, or on demand.
+# No secrets are needed: the archives are generated from the sources and signed
+# by nothing but their own SHA-256.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to publish, e.g. v1.0.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # A manual dispatch must build the tag it publishes, not the branch.
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # The tag is the version. A tag that disagrees with package.json would
+      # publish archives named one thing and described as another.
+      - name: Verify the tag matches package.json
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          case "$tag" in
+            v*) ;;
+            *) echo "::error::Tag '$tag' must start with v"; exit 1 ;;
+          esac
+          version="$(node -p "require('./package.json').version")"
+          test "v$version" = "$tag" || {
+            echo "::error::package.json says $version, the tag says $tag"
+            exit 1
+          }
+          echo "Publishing $tag"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate presets and wallpapers
+        run: npm run build
+
+      - name: Verify generated pack
+        run: npm run check
+
+      - name: Bundle release archives
+        run: npm run release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-archives
+          path: release/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${tag#v}"
+          {
+            echo "Ten KWGT presets and six matching wallpapers, drawn from the same crimson palette."
+            echo
+            echo "**Presets** — \`crimson-moon-widgets-$version.zip\`: the ten \`.kwgt\` files plus the manifest that lists their grid, module count and checksum."
+            echo
+            echo "**Wallpapers** — \`crimson-moon-wallpapers-$version.zip\`: six designs at 1080×2400 and 1440×3200, the SVG originals, plus a manifest."
+            echo
+            echo "Each archive ships a \`.sha256\` beside it; check it with \`sha256sum -c\`."
+            echo
+            echo "**Install**"
+            echo "1. Extract the presets archive and copy every \`.kwgt\` into \`Kustom/widgets/\` on the phone. Do not unzip the presets themselves."
+            echo "2. Add a KWGT widget, open the preset picker, choose the SD-card tab and pick one."
+            echo "3. Set a wallpaper from the other archive at its native size."
+            echo
+            echo "Do not use Import on a preset that already sits in \`Kustom/widgets/\`: Kustom copies the file onto itself and leaves zero bytes."
+            echo
+            echo "The presets are verified structurally and by render, not by importing them into KWGT; the wallpapers have not been tried against a launcher's parallax."
+          } > notes.md
+          cat notes.md
+          assets=(release/*.zip release/*.sha256)
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" --title "Crimson Moon Widgets $version" --notes-file notes.md
+          else
+            gh release create "$tag" "${assets[@]}" \
+              --title "Crimson Moon Widgets $version" \
+              --notes-file notes.md \
+              --verify-tag
+          fi
