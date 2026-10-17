@@ -136,6 +136,7 @@ so each backdrop is judged behind a plate rather than on its own.
 | `tools/wallpapers.mjs` | Rasterises the backdrops with sharp and records their hashes |
 | `tools/check.mjs` | Validates every preset, wallpaper, manifest and the preview |
 | `tools/serve.mjs` | Static server for the preview page |
+| `.github/workflows/build.yml` | `npm ci` → build → check → rebuild on every push |
 
 `npm run check` fails on an unknown module type, a toggle without a value, a
 formula without its toggle, unbalanced `$…$`, an unknown Kustom function, a

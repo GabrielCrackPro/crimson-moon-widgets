@@ -1,0 +1,73 @@
+name: Build pack
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate presets and wallpapers
+        run: npm run build
+
+      - name: Verify generated pack
+        run: npm run check
+
+      # The presets and the check are the product; this step guards the shape of
+      # the tree a phone or a release would consume, not the sources behind it.
+      - name: Sanity-check generated tree
+        run: |
+          set -euo pipefail
+          presets=$(ls dist/*.kwgt | wc -l)
+          wallpapers=$(ls dist/wallpapers/*.png | wc -l)
+          test "$presets" -ge 10
+          test "$wallpapers" -ge 12
+          test -f dist/manifest.json
+          test -f dist/wallpapers/manifest.json
+          test -f preview/index.html
+          # Every preset has to be a readable zip with preset.json at its root.
+          for f in dist/*.kwgt; do unzip -l "$f" | grep -q preset.json; done
+          echo "$presets presets, $wallpapers wallpapers, $(du -sh dist | cut -f1) in dist"
+
+      # Both passes are claimed to be reproducible. That claim is what lets the
+      # manifests carry checksums, so it is verified rather than asserted.
+      - name: Rebuild and compare
+        run: |
+          set -euo pipefail
+          find dist -type f | sort | xargs sha256sum > "$RUNNER_TEMP/build-a.txt"
+          npm run build > /dev/null
+          find dist -type f | sort | xargs sha256sum > "$RUNNER_TEMP/build-b.txt"
+          if ! diff "$RUNNER_TEMP/build-a.txt" "$RUNNER_TEMP/build-b.txt"; then
+            echo "::error::a rebuild of unchanged sources produced different bytes"
+            exit 1
+          fi
+          echo "$(wc -l < "$RUNNER_TEMP/build-a.txt") files rebuild identically"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: crimson-moon-pack
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
