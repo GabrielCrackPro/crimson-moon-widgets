@@ -1,7 +1,7 @@
 # Crimson Moon Widgets
 
 A KWGT pack built from the same palette as [crimson-moon-iconpack](../crimson-moon-iconpack):
-ten presets, one set of globals, no second guessing about colour.
+ten presets, six backdrops, one app, no second guessing about colour.
 
 Each preset is generated from a declarative spec, so the colours, the geometry
 and the preview all come from one place. One card is the hero, two are for
@@ -23,10 +23,49 @@ without reading the same sentence twice.
 
 ```bash
 npm install                      # sharp, used only to rasterise the wallpapers
-npm run build && npm run check   # 10 presets + 12 wallpaper PNGs + the preview page
+npm run build && npm run check   # presets, wallpapers, app assets, preview page
 npm run wallpapers               # just the backdrops, when that is all you changed
 npm run serve                    # http://127.0.0.1:4322/preview/index.html
+
+# The app needs the Android SDK, and the assets the command above generated.
+gradle -p android assembleDebug  # android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+## The app
+
+The app is the pack's front door, and the reason it behaves like a pack from a
+store rather than a folder of files:
+
+- **It lists the presets with real previews.** No thumbnails are shipped: the
+  app draws each board on a canvas from the same catalog the `.kwgt` files are
+  built from, with the device's own fonts, so a preview cannot drift from the
+  preset and 月の光 renders as designed instead of as tofu.
+- **It hands a preset to KWGT in one tap.** Tapping a card starts
+  `org.kustom.widget.picker.WidgetPicker` with a
+  `kfile://<package>/widgets/<file>.kwgt` URI — Kustom's documented external
+  load. If KWGT is missing the app says so and offers the store page.
+- **It is also a pack.** `AndroidManifest.xml` declares
+  `org.kustom.api.Provider` at `<applicationId>.kustom.provider` with the
+  `org.kustom.provider.WIDGETS` and `WALLPAPERS` actions, so KWGT's
+  installed-pack picker lists the ten presets and six backdrops directly. The
+  presets live in `assets/widgets/`, the backdrops in `assets/wallpapers/`, both
+  staged from `dist/` by `npm run build`.
+- **It applies the wallpapers.** Each backdrop opens full-height with a
+  `WallpaperManager` action; the app asks for no storage permission.
+
+`android/` is a plain Gradle project with no Compose and no UI library beyond
+the platform views: one activity, three Java classes, and the Kustom provider
+artifact (`org.bitbucket.frankmonza:kustomapi:21`) that supplies the provider
+class.
+
+### Signing
+
+The CI build is **debug-signed**: installable by sideload, not publishable on
+Play, and not upgradeable across machines. A Play release needs your own
+keystore; the Gradle file already reads it from the same four environment
+variables the icon pack uses (`CM_KEYSTORE_PATH`, `CM_KEYSTORE_PASSWORD`,
+`CM_KEY_ALIAS`, `CM_KEY_PASSWORD`), so wiring them as repository secrets is the
+whole job.
 
 ## Install
 
@@ -136,6 +175,8 @@ so each backdrop is judged behind a plate rather than on its own.
 | `tools/wallpapers.mjs` | Rasterises the backdrops with sharp and records their hashes |
 | `tools/check.mjs` | Validates every preset, wallpaper, manifest and the preview |
 | `tools/serve.mjs` | Static server for the preview page |
+| `tools/android.mjs` | Stages presets, wallpapers and the preview catalog for the app |
+| `android/` | The pack app: one activity, a canvas preview, the Kustom provider |
 | `.github/workflows/build.yml` | `npm ci` → build → check → rebuild on every push |
 | `.github/workflows/release.yml` | `v*` tag, or manual dispatch: bundles and publishes the release |
 | `tools/release.mjs` | Zips the presets and wallpapers for a release, with checksums |
@@ -163,26 +204,27 @@ git push origin v1.0.0
 ```
 
 The tag **is** the version: the release workflow fails if `package.json` disagrees
-with it. It builds, checks, and publishes two archives —
-`crimson-moon-widgets-<version>.zip` (the presets) and
-`crimson-moon-wallpapers-<version>.zip` (the renders) — each with a `.sha256`
-beside it. Re-running against an existing tag replaces the assets.
+with it. It builds, checks, and publishes three files —
+`crimson-moon-widgets-<version>.zip` (the presets),
+`crimson-moon-wallpapers-<version>.zip` (the renders) and
+`crimson-moon-widgets-<version>.apk` (the app, debug-signed) — each with a
+`.sha256` beside it. Re-running against an existing tag replaces the assets.
 
 ## Roadmap
 
-- **A pack APK.** Play Store packs are Android apps carrying `.kwgt` files in
-  `assets/widgets/` and exposing them through Kustom's provider
-  (`org.kustom.api.Provider`, action `org.kustom.provider.WIDGETS`), with
-  `org.kustom.widget.picker.WidgetPicker` + a `kfile://` URI to open one. The
-  icon pack's Gradle + CI setup is the template.
+- **A signed Play build.** The app assembles and passes CI; publishing needs a
+  keystore and the four signing secrets described above.
 - **More widgets.** Calendar month, storage, a "moon phase" board, a 2×2 clock.
 - **Publish the globals as a theme file** so both packs can be recoloured in one
   pass.
 
 ## Limits
 
-Nothing here has been loaded in KWGT yet — there is no Android device or
-emulator in this environment, so the presets are verified structurally (schema,
-formulas, palette, geometry, zip layout) and visually (the preview), not by
-opening them in the app. Expect one round of fixes on first import; the check
-script exists so that round is about taste rather than typos.
+Nothing here has been loaded in KWGT yet, and the app has never run on a phone
+— there is no device or emulator in this environment. The presets are verified
+structurally (schema, formulas, palette, geometry, zip layout) and visually (the
+preview); the app is verified by building it in CI and asserting on the APK
+(package, launchable activity, provider authority and actions, assets inside
+it, provider class in the dex), not by launching it. Expect one round of fixes
+on the first import and the first launch; the check script exists so that round
+is about taste rather than typos.
