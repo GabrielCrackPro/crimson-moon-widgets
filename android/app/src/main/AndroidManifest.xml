@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The app offers its backdrops through WallpaperManager. -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
+    <!-- Android 11+ package visibility: we only ask about the Kustom apps. -->
+    <queries>
+        <package android:name="org.kustom.widget" />
+        <package android:name="org.kustom.widget.pro" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@drawable/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CrimsonMoon">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+          The pack contract: KWGT scans for providers advertising these actions,
+          then reads assets/widgets and assets/wallpapers through them. The
+          authority must be <applicationId>.kustom.provider.
+        -->
+        <provider
+            android:name="org.kustom.api.Provider"
+            android:authorities="${applicationId}.kustom.provider"
+            android:exported="true"
+            tools:ignore="ExportedContentProvider">
+            <intent-filter>
+                <action android:name="org.kustom.provider.WIDGETS" />
+                <action android:name="org.kustom.provider.WALLPAPERS" />
+            </intent-filter>
+        </provider>
+    </application>
+</manifest>

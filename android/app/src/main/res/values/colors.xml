@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same values as src/tokens.mjs; Android and Kustom both use #AARRGGBB. -->
+    <color name="ink">#FF050306</color>
+    <color name="moon">#FFFF2F5D</color>
+    <color name="sakura">#FFFF7E9D</color>
+    <color name="text">#FFF6E7EC</color>
+    <color name="dim">#8AF6E7EC</color>
+</resources>

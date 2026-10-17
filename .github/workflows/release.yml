@@ -51,6 +51,7 @@ jobs:
             echo "::error::package.json says $version, the tag says $tag"
             exit 1
           }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "Publishing $tag"
 
       - name: Install dependencies
@@ -62,8 +63,54 @@ jobs:
       - name: Verify generated pack
         run: npm run check
 
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: 8.11.1
+
+      - name: Assemble the pack app
+        run: |
+          set -euo pipefail
+          code=$(node -e "const [a,b,c]=process.argv[1].split('.');console.log(a*10000+b*100+Number(c||0))" "$VERSION")
+          gradle -p android assembleDebug --no-daemon --stacktrace \
+            -PappVersionName="$VERSION" -PappVersionCode="$code"
+
+      - name: Verify the APK is the pack app
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK" || { echo "::error::$APK was not produced"; exit 1; }
+          unzip -l "$APK" | grep -q "assets/catalog.json"
+          test "$(unzip -l "$APK" | grep -c 'assets/widgets/.*\.kwgt')" -ge 10
+          test "$(unzip -l "$APK" | grep -c 'assets/wallpapers/.*\.png')" -ge 6
+          AAPT2="${ANDROID_SDK_ROOT:-$ANDROID_HOME}/build-tools/35.0.0/aapt2"
+          "$AAPT2" dump badging "$APK" > /tmp/badging.txt
+          grep -q "package: name='com.crimsonmoon.widgets'" /tmp/badging.txt
+          grep -q "versionName='$VERSION'" /tmp/badging.txt
+          grep -q "launchable-activity: name='com.crimsonmoon.widgets.MainActivity'" /tmp/badging.txt
+          "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml > /tmp/manifest.txt
+          grep -q "org.kustom.provider.WIDGETS" /tmp/manifest.txt
+          grep -q "org.kustom.api.Provider" /tmp/manifest.txt
+
       - name: Bundle release archives
         run: npm run release
+
+      - name: Add the APK to the assets
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/debug/app-debug.apk "crimson-moon-widgets-$VERSION.apk"
+          sha256sum "crimson-moon-widgets-$VERSION.apk" > "crimson-moon-widgets-$VERSION.apk.sha256"
+          mkdir -p release
+          mv "crimson-moon-widgets-$VERSION.apk" "crimson-moon-widgets-$VERSION.apk.sha256" release/
+          ls -lh release/
 
       - uses: actions/upload-artifact@v7
         with:
@@ -86,7 +133,9 @@ jobs:
             echo
             echo "**Wallpapers** — \`crimson-moon-wallpapers-$version.zip\`: six designs at 1080×2400 and 1440×3200, the SVG originals, plus a manifest."
             echo
-            echo "Each archive ships a \`.sha256\` beside it; check it with \`sha256sum -c\`."
+            echo "**App** — \`crimson-moon-widgets-$version.apk\`: browse the presets with previews, hand one to KWGT in a tap, and apply the backdrops. Debug-signed, so sideload it rather than expecting an update channel."
+            echo
+            echo "Each file ships a \`.sha256\` beside it; check it with \`sha256sum -c\`."
             echo
             echo "**Install**"
             echo "1. Extract the presets archive and copy every \`.kwgt\` into \`Kustom/widgets/\` on the phone. Do not unzip the presets themselves."
@@ -98,7 +147,7 @@ jobs:
             echo "The presets are verified structurally and by render, not by importing them into KWGT; the wallpapers have not been tried against a launcher's parallax."
           } > notes.md
           cat notes.md
-          assets=(release/*.zip release/*.sha256)
+          assets=(release/*.zip release/*.apk release/*.sha256)
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release upload "$tag" "${assets[@]}" --clobber
             gh release edit "$tag" --title "Crimson Moon Widgets $version" --notes-file notes.md
