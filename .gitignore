@@ -1,0 +1,11 @@
+# Reference presets downloaded to learn the format: never committed, never shipped.
+refs/
+
+# Build output: reproducible with npm run build. The preview page is generated
+# too, and it points at dist/wallpapers, so committing it would mean committing
+# a page with missing images.
+dist/
+preview/
+
+node_modules/
+.DS_Store

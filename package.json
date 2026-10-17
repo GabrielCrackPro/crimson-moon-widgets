@@ -1,0 +1,23 @@
+{
+  "name": "crimson-moon-widgets",
+  "version": "0.1.0",
+  "description": "Crimson Moon — a KWGT widget pack generated from one palette",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node tools/wallpapers.mjs && node tools/build.mjs",
+    "check": "node tools/check.mjs",
+    "wallpapers": "node tools/wallpapers.mjs",
+    "serve": "node tools/serve.mjs"
+  },
+  "keywords": [
+    "kwgt",
+    "kustom",
+    "widget",
+    "icon-pack"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "sharp": "^0.35.5"
+  }
+}
