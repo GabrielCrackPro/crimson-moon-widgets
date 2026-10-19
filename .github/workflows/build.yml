@@ -35,6 +35,11 @@ jobs:
       - name: Verify generated pack
         run: npm run check
 
+      # The tap authority is assembled in three places (the app, this workflow,
+      # the release notes); this guard fails if they ever drift apart again.
+      - name: Verify the kfile authority stays consistent
+        run: node tools/verify-contraction.mjs
+
       # The presets and the check are the product; this step guards the shape of
       # the tree a phone or a release would consume, not the sources behind it.
       - name: Sanity-check generated tree
@@ -47,9 +52,19 @@ jobs:
           test -f dist/manifest.json
           test -f dist/wallpapers/manifest.json
           test -f preview/index.html
-          # Every preset has to be a readable zip with preset.json at its root.
-          for f in dist/*.kwgt; do unzip -l "$f" | grep -q preset.json; done
+          # Every preset has to be a readable zip with preset.json at its root
+          # and the preview thumb entries KWGT's picker loads.
+          for f in dist/*.kwgt; do
+            unzip -l "$f" | grep -q preset.json
+            unzip -l "$f" | grep -q preset_thumb_portrait.jpg
+            unzip -l "$f" | grep -q preset_thumb_landscape.jpg
+          done
           echo "$presets presets, $wallpapers wallpapers, $(du -sh dist | cut -f1) in dist"
+          # KWGT loads presets through the pack provider when they live in the
+          # app's assets, so the same build tree must be the one the app ships.
+          # The Android step builds the app in the same job; it does not rebuild
+          # the pack, intentionally, so the APK's assets are the bytes that were
+          # verified above — not whatever a second run happens to produce.
 
       # Both passes are claimed to be reproducible. That claim is what lets the
       # manifests carry checksums, so it is verified rather than asserted.
@@ -90,6 +105,7 @@ jobs:
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
           code=$(node -e "const [a,b,c]=process.argv[1].split('.');console.log(a*10000+b*100+Number(c||0))" "$version")
+          echo "VERSION=$version" >> "$GITHUB_ENV"
           gradle -p android assembleDebug --no-daemon --stacktrace \
             -PappVersionName="$version" -PappVersionCode="$code"
 
@@ -110,6 +126,26 @@ jobs:
           "$AAPT2" dump badging "$APK" | tee /tmp/badging.txt | head -2
           grep -q "package: name='com.crimsonmoon.widgets'" /tmp/badging.txt
           grep -q "launchable-activity: name='com.crimsonmoon.widgets.MainActivity'" /tmp/badging.txt
+          unzip -p "$APK" assets/catalog.json > "$RUNNER_TEMP/catalog.json"
+          node -e '
+            const {readFileSync}=require("fs");
+            const m=JSON.parse(readFileSync(process.env.RUNNER_TEMP+"/catalog.json","utf8"));
+            if (m.package !== "com.crimsonmoon.widgets") { console.error("catalog package is "+m.package); process.exit(1); }
+            if (m.version !== process.env.VERSION) { console.error("catalog version is "+m.version+", expected "+process.env.VERSION); process.exit(1); }
+            if (m.widgets.length !== 10) { console.error("catalog has "+m.widgets.length+" widgets, expected 10"); process.exit(1); }
+            for (const w of m.widgets) {
+              if (!w.file || !w.file.endsWith(".kwgt")) {
+                console.error("catalog widget has no usable file:", JSON.stringify(w));
+                process.exit(1);
+              }
+            }
+            // KWGT resolves a kfile host as the provider authority verbatim
+            // (its KFile class never appends a suffix), so the authority the
+            // tap uses is exactly the one the manifest declares.
+            const kfile = "kfile://" + m.package + ".kustom.provider/widgets/";
+            console.log("catalog ok: " + m.widgets.length + " boards, package " + m.package + ", kfile " + kfile + "<file>.kwgt");
+          '
+          rm -f "$RUNNER_TEMP/catalog.json"
           "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml | tee /tmp/manifest.txt | grep -q "kustom.provider"
           grep -q "org.kustom.provider.WIDGETS" /tmp/manifest.txt
           grep -q "org.kustom.api.Provider" /tmp/manifest.txt

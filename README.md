@@ -36,14 +36,20 @@ gradle -p android assembleDebug  # android/app/build/outputs/apk/debug/app-debug
 The app is the pack's front door, and the reason it behaves like a pack from a
 store rather than a folder of files:
 
-- **It lists the presets with real previews.** No thumbnails are shipped: the
-  app draws each board on a canvas from the same catalog the `.kwgt` files are
-  built from, with the device's own fonts, so a preview cannot drift from the
-  preset and 月の光 renders as designed instead of as tofu.
+- **It lists the presets with real previews.** The app draws each board on a
+  canvas from the same catalog the `.kwgt` files are built from, with the
+  device's own fonts, so a preview cannot drift from the preset and 月の光
+  renders as designed instead of as tofu. (The `.kwgt` files *also* carry
+  bitmap thumbnails — see below — because that is where KWGT's own picker
+  looks.)
 - **It hands a preset to KWGT in one tap.** Tapping a card starts
   `org.kustom.widget.picker.WidgetPicker` with a
-  `kfile://<package>/widgets/<file>.kwgt` URI — Kustom's documented external
-  load. If KWGT is missing the app says so and offers the store page.
+  `kfile://<applicationId>.kustom.provider/widgets/<file>.kwgt` URI. KWGT's
+  `KFile` class takes the host of a `kfile://` URI as the content-provider
+  authority **verbatim** — it never appends `.kustom.provider` — so the host
+  is the authority this app declares, not the bare package name that older
+  Kustom docs still show. If KWGT is missing the app says so and offers the
+  store page.
 - **It is also a pack.** `AndroidManifest.xml` declares
   `org.kustom.api.Provider` at `<applicationId>.kustom.provider` with the
   `org.kustom.provider.WIDGETS` and `WALLPAPERS` actions, so KWGT's
@@ -87,7 +93,8 @@ where each claim comes from:
 | Claim | Basis |
 | --- | --- |
 | A `.kwgt` is a zip whose root holds `preset.json` | Real presets that unzip and rebuild this way |
-| `preset.json` = `preset_info` + `preset_root` | Every studied preset |
+| The zip also holds `preset_thumb_portrait.jpg` and `preset_thumb_landscape.jpg` — KWGT's picker reads its preview from those entries | KWGT's own `PresetFileDataFetcher` looks up exactly those entry names, and every real pack ships them (Kuper's sample included) |
+| `preset.json` = `preset_info` + `preset_root`, with `preset_info` **first** | Every studied preset; Kustom's parser reads only the first key |
 | `preset_info.version` is `13` on current KWGT | Presets exported from KWGT 3.7x |
 | Modules are typed by `internal_type`; children live in `viewgroup_items` | Studied presets |
 | A property is carried by a literal, a formula in `internal_formulas`, and a flag in `internal_toggles` (`10` = set) | Studied presets |
@@ -172,6 +179,7 @@ so each backdrop is judged behind a plate rather than on its own.
 | `src/zip.mjs` | Dependency-free deterministic zip writer |
 | `src/wallpapers.mjs` | Six backdrops as SVG, built from the same tokens |
 | `tools/build.mjs` | Writes `dist/*.kwgt`, `dist/manifest.json` and the preview |
+| `tools/thumbs.mjs` | Renders the preview JPEGs KWGT's picker reads out of each `.kwgt` |
 | `tools/wallpapers.mjs` | Rasterises the backdrops with sharp and records their hashes |
 | `tools/check.mjs` | Validates every preset, wallpaper, manifest and the preview |
 | `tools/serve.mjs` | Static server for the preview page |

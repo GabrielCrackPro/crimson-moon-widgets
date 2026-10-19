@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { WIDGETS } from "../src/widgets.mjs";
 import { buildPreset, stripPreview } from "../src/modules.mjs";
 import { zip, zipEntryNames } from "../src/zip.mjs";
+import { renderThumb } from "./thumbs.mjs";
 import { PALETTE, SURFACE, INK, THEME_GLOBALS } from "../src/tokens.mjs";
 import { WALLPAPERS, SIZES, CANVAS } from "../src/wallpapers.mjs";
 
@@ -158,15 +159,20 @@ const generated = [];
 for (const spec of WIDGETS) {
   const preset = stripPreview(buildPreset(spec));
   const json = `${JSON.stringify(preset, null, 2)}\n`;
-  const archive = zip([{ name: "preset.json", data: json }]);
-  generated.push({ spec, json, archive });
+  const thumb = await renderThumb(spec);
+  const archive = zip([
+    { name: "preset.json", data: json },
+    { name: "preset_thumb_portrait.jpg", data: thumb },
+    { name: "preset_thumb_landscape.jpg", data: thumb },
+  ]);
+  generated.push({ spec, json, archive, thumb });
 }
 
 const files = await readdir(DIST).catch(() => []);
 if (!files.length) fail("dist/ is empty — run npm run build first");
 
 let archiveChecked = 0;
-for (const { spec, json, archive } of generated) {
+for (const { spec, json, archive, thumb } of generated) {
   const file = `${spec.id}.kwgt`;
   const onDisk = await readFile(path.join(DIST, file)).catch(() => null);
   if (!onDisk) {
@@ -175,10 +181,18 @@ for (const { spec, json, archive } of generated) {
   }
   if (!onDisk.equals(archive)) fail(`${file}: on disk differs from what the sources build`);
   const names = zipEntryNames(onDisk);
-  // A .kwgt is a zip whose root holds preset.json; anything else is either a
-  // leftover or a sign the container was written wrong.
-  if (names.length !== 1 || names[0] !== "preset.json")
-    fail(`${file}: archive entries should be [preset.json], got [${names.join(", ")}]`);
+  // A .kwgt is a zip whose root holds preset.json plus the two preview thumbs
+  // KWGT's picker loads; anything else is either a leftover or a sign the
+  // container was written wrong.
+  const expected = ["preset.json", "preset_thumb_portrait.jpg", "preset_thumb_landscape.jpg"];
+  if (names.length !== expected.length || names.some((name, i) => name !== expected[i]))
+    fail(`${file}: archive entries should be [${expected.join(", ")}], got [${names.join(", ")}]`);
+  // The thumbs have to be real JPEGs: KWGT decodes them by content, and an
+  // empty or corrupt entry is how a pack ships blank tiles by accident.
+  if (!(thumb[0] === 0xff && thumb[1] === 0xd8 && thumb[2] === 0xff))
+    fail(`${file}: preset thumb is not a JPEG`);
+  // A sparse board compresses well, so only an empty-looking file fails.
+  if (thumb.length < 2_000) fail(`${file}: preset thumb is only ${thumb.length} B`);
 
   const parsed = JSON.parse(onDisk.length ? json : "{}");
   const info = parsed.preset_info ?? {};
@@ -237,7 +251,7 @@ for (const { spec, json, archive } of generated) {
   }
   archiveChecked++;
 }
-ok(`${archiveChecked} presets are zips holding one valid preset.json`);
+ok(`${archiveChecked} presets are zips holding preset.json and both preview thumbs`);
 
 // Fonts: nothing may reference Kustom's bundled fonts, which we cannot ship.
 for (const { spec, json } of generated) {

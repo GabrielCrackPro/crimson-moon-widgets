@@ -96,6 +96,25 @@ jobs:
           grep -q "package: name='com.crimsonmoon.widgets'" /tmp/badging.txt
           grep -q "versionName='$VERSION'" /tmp/badging.txt
           grep -q "launchable-activity: name='com.crimsonmoon.widgets.MainActivity'" /tmp/badging.txt
+          unzip -p "$APK" assets/catalog.json > "$RUNNER_TEMP/catalog.json"
+          node -e '
+            const {readFileSync}=require("fs");
+            const m=JSON.parse(readFileSync(process.env.RUNNER_TEMP+"/catalog.json","utf8"));
+            if (m.package !== "com.crimsonmoon.widgets") { console.error("catalog package is "+m.package); process.exit(1); }
+            if (m.version !== process.env.VERSION) { console.error("catalog version is "+m.version+", expected "+process.env.VERSION); process.exit(1); }
+            if (m.widgets.length !== 10) { console.error("catalog has "+m.widgets.length+" widgets, expected 10"); process.exit(1); }
+            for (const w of m.widgets) {
+              if (!w.file || !w.file.endsWith(".kwgt")) {
+                console.error("catalog widget has no usable file:", JSON.stringify(w));
+                process.exit(1);
+              }
+            }
+            // KWGT resolves a kfile host as the provider authority verbatim
+            // (its KFile class never appends a suffix), so the authority the
+            // tap uses is exactly the one the manifest declares.
+            console.log("catalog ok: " + m.widgets.length + " boards, package " + m.package + ", kfile authority " + m.package + ".kustom.provider");
+          '
+          rm -f "$RUNNER_TEMP/catalog.json"
           "$AAPT2" dump xmltree "$APK" --file AndroidManifest.xml > /tmp/manifest.txt
           grep -q "org.kustom.provider.WIDGETS" /tmp/manifest.txt
           grep -q "org.kustom.api.Provider" /tmp/manifest.txt
@@ -133,16 +152,21 @@ jobs:
             echo
             echo "**Wallpapers** — \`crimson-moon-wallpapers-$version.zip\`: six designs at 1080×2400 and 1440×3200, the SVG originals, plus a manifest."
             echo
-            echo "**App** — \`crimson-moon-widgets-$version.apk\`: browse the presets with previews, hand one to KWGT in a tap, and apply the backdrops. Debug-signed, so sideload it rather than expecting an update channel."
+            echo "**App** — \`crimson-moon-widgets-$version.apk\`: browse the presets with previews, hand one to KWGT in a tap, and apply the backdrops. The presets also register as an installed Kustom pack through the app's \`org.kustom.api.Provider\`, so they show up in KWGT's installed-packs tab — with their names, descriptions and preview images — not just when you tap them here. Debug-signed, so sideload it rather than expecting an update channel."
             echo
             echo "Each file ships a \`.sha256\` beside it; check it with \`sha256sum -c\`."
             echo
             echo "**Install**"
-            echo "1. Extract the presets archive and copy every \`.kwgt\` into \`Kustom/widgets/\` on the phone. Do not unzip the presets themselves."
-            echo "2. Add a KWGT widget, open the preset picker, choose the SD-card tab and pick one."
-            echo "3. Set a wallpaper from the other archive at its native size."
-            echo
+            echo "1. Install the APK once — the pack registers through the app, so the app has to be installed on the phone for KWGT to see these presets as an installed pack."
+            echo "2. Extract the presets archive and copy every \`.kwgt\` into \`Kustom/widgets/\` on the phone. Do not unzip the presets themselves."
+            echo "3. Add a KWGT widget, open the preset picker, choose the installed Crimson Moon pack, and pick the preset. Alternatively, tap the preset in this app — it opens the same picker at that preset."
+            echo "4. Set a wallpaper from the other archive at its native size."
+
             echo "Do not use Import on a preset that already sits in \`Kustom/widgets/\`: Kustom copies the file onto itself and leaves zero bytes."
+            echo
+            echo "If tapping a preset opens KWGT and then shows \`Error preset file not found\`:"
+            echo "  - The tap hands KWGT \`kfile://com.crimsonmoon.widgets.kustom.provider/widgets/<file>.kwgt\`. KWGT uses the host of that URI as the provider authority verbatim, so it must be the authority the app declares (\`<applicationId>.kustom.provider\`), not the bare package name older docs still show."
+            echo "  - KWGT reads the presets out of the installed app through that authority, so the app has to be installed — and the installed build has to be this one, or KWGT is reading the old files."
             echo
             echo "The presets are verified structurally and by render, not by importing them into KWGT; the wallpapers have not been tried against a launcher's parallax."
           } > notes.md

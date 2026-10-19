@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { WIDGETS } from "../src/widgets.mjs";
 import { buildPreset, stripPreview } from "../src/modules.mjs";
 import { zip } from "../src/zip.mjs";
+import { renderThumb } from "./thumbs.mjs";
 import { GEOMETRY, PALETTE, SURFACE, THEME_GLOBALS } from "../src/tokens.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
@@ -228,7 +229,14 @@ async function main() {
   for (const spec of WIDGETS) {
     const preset = stripPreview(buildPreset(spec));
     const json = `${JSON.stringify(preset, null, 2)}\n`;
-    const archive = zip([{ name: "preset.json", data: json }]);
+    // KWGT's picker reads its preview out of these entries, the same ones a
+    // Kustom export writes; a preset without them shows as a blank tile.
+    const thumb = await renderThumb(spec);
+    const archive = zip([
+      { name: "preset.json", data: json },
+      { name: "preset_thumb_portrait.jpg", data: thumb },
+      { name: "preset_thumb_landscape.jpg", data: thumb },
+    ]);
     const file = `${spec.id}.kwgt`;
     await writeFile(path.join(DIST, file), archive);
 

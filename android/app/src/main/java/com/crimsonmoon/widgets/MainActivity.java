@@ -208,8 +208,15 @@ public final class MainActivity extends Activity {
 
     private void openPreset(Catalog.Widget widget) {
         Intent intent = new Intent();
+        // Kustom's documented external load, with the host spelled the way
+        // KWGT actually reads it: its KFile class takes the kfile host as the
+        // ContentProvider authority verbatim and never appends a suffix, so
+        // the host has to be the authority this app declares —
+        // <applicationId>.kustom.provider — not the bare package name.
+        // The explicit component fires even when package visibility would
+        // hide the picker from a resolveActivity() check.
         intent.setComponent(new ComponentName(KWGT_PACKAGE, KWGT_PICKER));
-        intent.setData(Uri.parse("kfile://" + getPackageName() + "/widgets/" + widget.file));
+        intent.setData(Uri.parse("kfile://" + getPackageName() + ".kustom.provider/widgets/" + widget.file));
 
         if (intent.resolveActivity(getPackageManager()) == null) {
             showMissingKwgt();
